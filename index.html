@@ -21,42 +21,83 @@
 			<div class="grid">
 				<div>
 					<label for="temperaturaSelect">Temperatura (°C)</label>
-					<select id="temperaturaSelect"></select>
+					<select id="temperaturaSelect">
+						<option value="25">25</option>
+						<option value="30">30</option>
+						<option value="37">37</option>
+					</select>
 				</div>
 				<div>
 					<label for="medioSelect">Medio</label>
-					<select id="medioSelect"></select>
+					<select id="medioSelect">
+						<option value="limitado">limitado</option>
+						<option value="rico">rico</option>
+					</select>
 				</div>
 				<div class="range">
-					<label for="tiempoInicio">Inicio del intervalo (h)</label>
-					<input id="tiempoInicio" type="range" min="0" max="1" step="0.01">
-					<span id="tiempoInicioValor" class="range-value">0.00 h</span>
+					<label for="tiempo">Hora (h)</label>
+					<input type="range" id="tiempo" min="0" max="24" step="1" value="12">
+					<span id="tiempoValor" class="range-value"></span>
 				</div>
-				<div class="range">
-					<label for="tiempoFin">Fin del intervalo (h)</label>
-					<input id="tiempoFin" type="range" min="0" max="1" step="0.01">
-					<span id="tiempoFinValor" class="range-value">0.00 h</span>
-				</div>
+				
 			</div>
 			<div class="models" id="botonesModelo"></div>
 			<div id="estado" class="status" hidden></div>
 		</section>
 
-		<section class="panel charts">
-			<div>
-				<h2 id="tituloPrincipal">Curva ajustada</h2>
-				<div class="chart"><canvas id="graficoPrincipal"></canvas></div>
-			</div>
-			<div>
-				<h2>Comparacion de modelos</h2>
-				<div class="chart"><canvas id="graficoComparativo"></canvas></div>
-			</div>
-			<div class="legend" id="detalleModelo">
-				<div><strong>Modelo:</strong> <span id="modeloNombre">-</span></div>
-				<div><strong>Ecuacion:</strong> <span id="modeloEcuacion">-</span></div>
-				<div><strong>R2:</strong> <span id="modeloR2">-</span> · <strong>R2 ajustado:</strong> <span id="modeloR2Adj">-</span> · <strong>Error:</strong> <span id="modeloError">-</span></div>
-			</div>
-		</section>
+		<div class="content-container">
+			<!-- Panel izquierdo: Gráfico -->
+			<div class="chart-panel">
+				<div class="chart-container">
+					<div class="chart-header">
+						<h2 id="chart-title">Relación Hora vs Crecimiento</h2>
+						
+					</div>
+				</div>
+				<div class="grafico-container">
+					<canvas id="grafico"></canvas>
+					<!-- <canvas id="graficoComparativo"></canvas> -->
+          		</div>
+        	</div>
+      	</div>
+
+		<!-- Panel derecho: Información del modelo -->
+      	<div class="info-panel">
+        	<div class="model-selector">
+          <h3>Seleccionar Modelo:</h3>
+          <div class="model-buttons">
+            <button class="model-btn active" data-modelo="lineal">Lineal</button>
+            <button class="model-btn" data-modelo="cuadratico">Polinomica de 2° orden</button>
+            <button class="model-btn" data-modelo="exponencial">Exponencial</button>
+            <button class="model-btn" data-modelo="potencial">Potencial</button>
+          </div>
+        </div>
+
+        <div class="model-info">
+          <h3 id="modelo-titulo">Modelo Lineal</h3>
+          <div class="ecuacion-container">
+            <h4>Ecuación del Modelo:</h4>
+            <div class="ecuacion" id="ecuacion-modelo">y = a + bx</div>
+          </div>
+          <div class="bondad-ajuste">
+            <h4>Bondad de Ajuste:</h4>
+            <div class="metricas">
+              <div class="metrica">
+                <span class="label">Coeficiente R²:</span>
+                <span id="r2-valor" class="valor">-</span>
+              </div>
+              <div class="metrica">
+                <span class="label">R² Ajustado:</span>
+                <span id="r2adj-valor" class="valor">-</span>
+              </div>
+              <div class="metrica">
+                <span class="label">Error Estándar:</span>
+                <span id="error-valor" class="valor">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+		
 	</main>
 
 	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" integrity="sha384-Sse/HDqcypGpyTDpvZOJNnG0TT3feGQUkF9H+mnRvic+LjR+K1NhTt8f51KIQ3v3" crossorigin="anonymous"></script>

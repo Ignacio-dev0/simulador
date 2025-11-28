@@ -5,6 +5,14 @@ let currentModelo = 'lineal';
 let chartInstance = null;
 let combinedChartInstance = null;
 
+const slider = document.getElementById("tiempo");
+const sliderValor = document.getElementById("tiempoValor");
+
+// Actualizar el valor del span cuando el slider se mueva
+slider.addEventListener("input", function() {
+  sliderValor.textContent = this.value;
+});
+
 const modelos = {
   lineal: { name: "Lineal", color: "#000000ff" },
   cuadratico: { name: "Polinomica de 2° orden", color: "#000000ff" },
@@ -137,3 +145,248 @@ function potFit(xs, ys) {
     ecuacion: `y = ${a.toFixed(4)}x^${b.toFixed(4)}`
   };
 }
+
+// Función para renderizar el gráfico con animaciones 
+function renderCluster(temperatura, medio) {
+  const puntos = datos.filter(d => d.temperatura === temperatura && d.medio === medio);
+  const xs = puntos.map(p => p.tiempo_h);
+  const ys = puntos.map(p => p['Crecimiento normalizado']);
+  
+  if (xs.length < 2) {
+    return null;
+  }
+  
+  // Identificador de la condición para la UI (simula el antiguo 'barrio')
+  const condicionId = `${temperatura}°C en ${medio}`;
+
+  // Calcular todos los modelos
+  const resultados = {};
+  resultados.lineal = linearFit(xs, ys);
+  resultados.cuadratico = quadFit(xs, ys);
+  resultados.exponencial = expFit(xs, ys);
+  resultados.potencial = potFit(xs, ys);
+  
+  updateUI(condicionId, resultados);
+  createAnimatedChart(condicionId, puntos, resultados);
+  
+  return resultados;
+}
+
+function updateUI( resultados) {
+  
+  // Actualizar tabla comparativa
+  updateComparisonTable(resultados);
+  
+  // Mostrar el modelo actual
+  showCurrentModel(resultados[currentModelo]);
+  
+}
+
+
+function updateComparisonTable(resultados) {
+  const tbody = document.querySelector('#tabla-modelos tbody');
+  tbody.innerHTML = '';
+  
+  Object.entries(resultados).forEach(([key, result]) => {
+    if (result) {
+      const tr = document.createElement('tr');
+      tr.dataset.modelo = key;
+      if (key === currentModelo) {
+        tr.classList.add('modelo-activo');
+      }
+      
+      tr.innerHTML = `
+        <td>${modelos[key].name}</td>
+        <td>${result.R2.toFixed(4)}</td>
+        <td>${result.R2adj.toFixed(4)}</td>
+      `;
+      
+      tbody.appendChild(tr);
+    }
+  });
+}
+
+function showCurrentModel(modeloData) {
+  if (!modeloData) {
+    document.getElementById('modelo-titulo').textContent = 'Modelo no disponible';
+    document.getElementById('ecuacion-modelo').textContent = 'No se puede calcular';
+    document.getElementById('r2-valor').textContent = '-';
+    document.getElementById('r2adj-valor').textContent = '-';
+    document.getElementById('error-valor').textContent = '-';
+    return;
+  }
+  
+  document.getElementById('modelo-titulo').textContent = modelos[currentModelo].name;
+  document.getElementById('ecuacion-modelo').textContent = modeloData.ecuacion;
+  document.getElementById('r2-valor').textContent = modeloData.R2.toFixed(4);
+  document.getElementById('r2adj-valor').textContent = modeloData.R2adj.toFixed(4);
+  document.getElementById('error-valor').textContent = modeloData.error.toFixed(4);
+}
+
+
+// Función modificada para renderizar el gráfico de crecimiento bacteriano con animaciones
+function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
+  // Crear un identificador único para el título y la leyenda
+  const condicionId = `T: ${temperatura}°C, Medio: ${medio}`;
+  
+  // Obtener el contexto del canvas
+  const ctx = document.getElementById('grafico').getContext('2d');
+  
+  // Destruir gráfico anterior si existe
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+  
+  // Crear datasets para el gráfico
+  const datasets = [];
+  
+  // Dataset para los puntos (con animación)
+  datasets.push({
+    // La etiqueta ahora usa la nueva condición
+    label: `Datos de ${condicionId}`,
+    data: puntos,
+    // Se mantiene la función getBarrioColor, pero debería ser reemplazada por una 
+    // función que devuelva un color basado en la Temperatura/Medio (e.g., getCondicionColor)
+    backgroundColor: getBarrioColor(temperatura), // Usando 'temperatura' temporalmente como clave de color
+    pointRadius: 6,
+    pointHoverRadius: 10,
+    animation: {
+      duration: 50,
+      easing: 'easeOutQuart',
+      delay: (ctx) => ctx.dataIndex * 5
+    }
+  });
+  
+  // Dataset para la curva del modelo actual
+  // Asumimos que los 'puntos' ya contienen los datos mapeados (tiempo_h en .x y Crecimiento en .y)
+  const minX = Math.min(...puntos.map(p => p.horas_t));
+  const maxX = Math.max(...puntos.map(p => p['Crecimiento normalizado']));
+  const rango = Array.from({length: 100}, (_, i) => minX + i * (maxX - minX) / 99);
+  
+  const modeloData = resultados[currentModelo];
+  if (modeloData) {
+    const curva = rango.map(x => ({x, y: modeloData.predict(x)}));
+    datasets.push({
+      label: `${modelos[currentModelo].name}`,
+      data: curva,
+      type: 'line',
+      borderColor: modelos[currentModelo].color,
+      borderWidth: 3,
+      fill: false,
+      pointRadius: 0,
+      tension: 0.4,
+      animation: {
+        duration: 2000,
+        easing: 'easeOutQuart'
+      }
+    });
+  }
+  
+  // Crear nuevo gráfico
+  chartInstance = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 2000,
+        easing: 'easeOutQuart'
+      },
+      scales: {
+        x: { 
+          title: { 
+            display: true, 
+            // Título del eje X actualizado a 'Hora'
+            text: 'Tiempo (Horas)',
+            font: { size: 14, weight: 'bold' }
+          },
+          grid: { color: 'rgba(0,0,0,0.1)' }
+        },
+        y: { 
+          title: { 
+            display: true, 
+            // Título del eje Y actualizado a 'Crecimiento Bacteriano'
+            text: 'Crecimiento Bacteriano (Normalizado)',
+            font: { size: 14, weight: 'bold' }
+          },
+          min: 0,     // mínimo del eje Y
+          max: 1.1,  // Ajuste a un máximo razonable para datos normalizados
+          grid: { color: 'rgba(0,0,0,0.1)' }
+        }
+      },
+      plugins: {
+        legend: { 
+          display: true,
+          position: 'top'
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (context.parsed.y !== null) {
+                label += `: (H: ${context.parsed.x.toFixed(2)}, Crec: ${context.parsed.y.toFixed(4)})`;
+              }
+              return label;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+
+
+// Inicializar la aplicación
+document.addEventListener('DOMContentLoaded', function() {
+  // Configurar selector de barrio
+  const temperaturaSelect = document.getElementById('temperaturaSelect');
+  const medioSelect = document.getElementById('medioSelect');
+  temperaturaSelect.value = currentTemperatura;
+  medioSelect.value = currentMedio;
+  temperaturaSelect.addEventListener('change', function() {
+    currentTemperatura = this.value;
+
+    renderCluster(currentTemperatura, currentMedio);
+  });
+
+  medioSelect.addEventListener('change', function() {
+    currentMedio = this.value;
+    renderCluster(currentTemperatura, currentMedio);
+  });
+  
+  // Configurar botones de modelo
+  document.querySelectorAll('.model-btn').forEach(button => {
+    button.addEventListener('click', function() {
+      // Actualizar botones activos
+      document.querySelectorAll('.model-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      this.classList.add('active');
+      
+      // Cambiar modelo
+      currentModelo = this.dataset.modelo;
+      
+      // Actualizar tabla
+      document.querySelectorAll('#tabla-modelos tbody tr').forEach(tr => {
+        tr.classList.remove('modelo-activo');
+        if (tr.dataset.modelo === currentModelo) {
+          tr.classList.add('modelo-activo');
+        }
+      });
+      
+      // Re-renderizar gráfico
+      const puntos = datos.filter(d => d.temperatura === temperatura && d.medio === medio);
+      const resultados = renderCluster(currentTemperatura, currentMedio);
+      showCurrentModel(resultados[currentModelo]);
+    });
+  });
+  
+  // Renderizar inicialmente
+  renderBarrio(currentTemperatura, currentMedio);
+  
+  
+});
