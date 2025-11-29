@@ -2,16 +2,11 @@
 let currentTemperatura = '25';
 let currentMedio = 'limitado';
 let currentModelo = 'lineal';
+let currentModeloFase1 = 'exponencial';
+let currentModeloFase2 = 'lineal';
 let chartInstance = null;
 let combinedChartInstance = null;
-
-const slider = document.getElementById("tiempo");
-const sliderValor = document.getElementById("tiempoValor");
-
-// Actualizar el valor del span cuando el slider se mueva
-slider.addEventListener("input", function() {
-  sliderValor.textContent = this.value;
-});
+let datos = [];
 
 const modelos = {
   lineal: { name: "Lineal", color: "#000000ff" },
@@ -146,13 +141,32 @@ function potFit(xs, ys) {
   };
 }
 
+// Determinar t_corte: último punto donde exponencial mantiene R² >= 0.90
+function computeTcorte(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return xs[n - 1];
+  let tCorte = xs[1];
+  for (let k = 2; k <= n; k++) {
+    const subXs = xs.slice(0, k);
+    const subYs = ys.slice(0, k);
+    const exp = expFit(subXs, subYs);
+    if (exp && exp.R2 >= 0.95) {
+      tCorte = subXs[k - 1];
+    }
+  }
+  return tCorte;
+}
+
 // Función para renderizar el gráfico con animaciones 
 function renderCluster(temperatura, medio) {
-  const rawPuntos = datos.filter(d => d.temperaturaC === temperatura && d.medio === medio);
-  
-  if (xs.length < 2) {
+  if (!Array.isArray(datos) || datos.length === 0) {
     return null;
   }
+  const horaMaxEl = document.getElementById('tiempo');
+  const horaMax = horaMaxEl ? Number(horaMaxEl.value) : Infinity;
+  const rawPuntos = datos
+    .filter(d => String(d.temperaturaC) === String(temperatura) && String(d.medio) === String(medio))
+    .filter(d => Number(d.tiempo_h) <= horaMax);
   
   const puntos = rawPuntos.map(p => ({ 
     x: p.tiempo_h, 
@@ -161,6 +175,16 @@ function renderCluster(temperatura, medio) {
 
   const xs = puntos.map(p => p.x); 
   const ys = puntos.map(p => p.y);
+
+  if (xs.length < 2) {
+    showCurrentModel(null);
+    // Limpiar gráfico si existía
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+    return null;
+  }
 
   // Identificador de la condición para la UI (simula el antiguo 'barrio')
   const condicionId = `${temperatura}°C en ${medio}`;
@@ -191,6 +215,7 @@ function updateUI( resultados) {
 
 function updateComparisonTable(resultados) {
   const tbody = document.querySelector('#tabla-modelos tbody');
+  if (!tbody) return; // La tabla es opcional en el HTML actual
   tbody.innerHTML = '';
   
   Object.entries(resultados).forEach(([key, result]) => {
@@ -229,6 +254,20 @@ function showCurrentModel(modeloData) {
   document.getElementById('error-valor').textContent = modeloData.error.toFixed(4);
 }
 
+// Color por condición Temperatura/Medio
+function getCondicionColor(temperatura, medio) {
+  const key = `${temperatura}-${medio}`;
+  const mapa = {
+    '25-limitado': '#1f77b4',
+    '25-rico': '#2ca02c',
+    '30-limitado': '#ff7f0e',
+    '30-rico': '#d62728',
+    '37-limitado': '#9467bd',
+    '37-rico': '#8c564b'
+  };
+  return mapa[key] || '#333333';
+}
+
 
 // Función modificada para renderizar el gráfico de crecimiento bacteriano con animaciones
 function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
@@ -251,9 +290,7 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
     // La etiqueta ahora usa la nueva condición
     label: `Datos de ${condicionId}`,
     data: puntos,
-    // Se mantiene la función getBarrioColor, pero debería ser reemplazada por una 
-    // función que devuelva un color basado en la Temperatura/Medio (e.g., getCondicionColor)
-    backgroundColor: getBarrioColor(temperatura), // Usando 'temperatura' temporalmente como clave de color
+    backgroundColor: getCondicionColor(temperatura, medio),
     pointRadius: 6,
     pointHoverRadius: 10,
     animation: {
@@ -263,28 +300,97 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
     }
   });
   
-  // Dataset para la curva del modelo actual
-  // Asumimos que los 'puntos' ya contienen los datos mapeados (tiempo_h en .x y Crecimiento en .y)
-  const minX = Math.min(...puntos.map(p => p.x));
-  const maxX = Math.max(...puntos.map(p => p.x));
-  const rango = Array.from({length: 100}, (_, i) => minX + i * (maxX - minX) / 99);
+  // Dataset para la curva del modelo actual o por tramos
+  // Extender la(s) curva(s) desde 0 hasta la Hora seleccionada en el slider
+  const horaMaxEl = document.getElementById('tiempo');
+  let horaMax = horaMaxEl ? Number(horaMaxEl.value) : 24;
+  if (!isFinite(horaMax) || horaMax <= 0) horaMax = 1;
+  const rango = Array.from({length: 200}, (_, i) => 0 + i * (horaMax - 0) / 199);
+  const xMax = Math.min(24, horaMax);
   
-  const modeloData = resultados[currentModelo];
-  if (modeloData) {
-    const curva = rango.map(x => ({x, y: modeloData.predict(x)}));
+  // Si hay modelos por tramos, dibujar dos curvas
+  const xs = puntos.map(p => p.x);
+  const ys = puntos.map(p => p.y);
+  let tCorte = computeTcorte(xs, ys);
+  // Mostrar info de t_corte
+  const tcInfo = document.getElementById('tcorte-info');
+  if (tcInfo) {
+    tcInfo.hidden = false;
+    tcInfo.textContent = `t_corte = ${tCorte.toFixed(2)} h (R² exp ≥ 0.90)`;
+  }
+
+  const rango1 = rango.filter(x => x <= tCorte);
+  const rango2 = rango.filter(x => x >= tCorte);
+
+  const mapModelo = {
+    lineal: linearFit,
+    cuadratico: quadFit,
+    exponencial: expFit,
+    potencial: potFit
+  };
+
+  // Ajustes por tramo usando datos correspondientes
+  // Construir pares (x,y) por tramo para evitar desalineación
+  const pares = xs.map((x,i)=>({x, y: ys[i]}));
+  const tramo1 = pares.filter(p => p.x <= tCorte);
+  const tramo2 = pares.filter(p => p.x >= tCorte);
+  const xs1 = tramo1.map(p=>p.x);
+  const ys1 = tramo1.map(p=>p.y);
+  const xs2 = tramo2.map(p=>p.x);
+  const ys2 = tramo2.map(p=>p.y);
+
+  const fit1 = mapModelo[currentModeloFase1](xs1, ys1);
+  const fit2 = mapModelo[currentModeloFase2](xs2, ys2);
+
+  // Curva suavizada combinando ambos modelos para evitar salto
+  if (fit1 && fit2) {
+    // Usar una transición suave alrededor de tCorte con ancho delta
+    const delta = Math.max(0.5, (horaMax - 0) * 0.05); // 5% del rango o 0.5h mínimo
+    const blend = (x) => {
+      // Función tipo sigmoide centrada en tCorte
+      const z = (x - tCorte) / delta;
+      return 1 / (1 + Math.exp(-z)); // 0 en tramo1, 1 en tramo2 suavemente
+    };
+    const curvaSuave = rango.map(x => {
+      const y1 = fit1.predict(x);
+      const y2 = fit2.predict(x);
+      const w = blend(x);
+      const y = (1 - w) * y1 + w * y2;
+      return { x, y };
+    });
     datasets.push({
-      label: `${modelos[currentModelo].name}`,
-      data: curva,
+      label: `Curva suavizada (t_corte)`,
+      data: curvaSuave,
       type: 'line',
-      borderColor: modelos[currentModelo].color,
+      borderColor: '#1d4ed8',
       borderWidth: 3,
       fill: false,
       pointRadius: 0,
-      tension: 0.4,
-      animation: {
-        duration: 2000,
-        easing: 'easeOutQuart'
-      }
+      tension: 0.2
+    });
+  } else if (fit1) {
+    const curva1 = rango.map(x => ({ x, y: fit1.predict(x) }));
+    datasets.push({
+      label: `Fase 1 - ${modelos[currentModeloFase1].name}`,
+      data: curva1,
+      type: 'line',
+      borderColor: modelos[currentModeloFase1].color,
+      borderWidth: 3,
+      fill: false,
+      pointRadius: 0,
+      tension: 0.2
+    });
+  } else if (fit2) {
+    const curva2 = rango.map(x => ({ x, y: fit2.predict(x) }));
+    datasets.push({
+      label: `Fase 2 - ${modelos[currentModeloFase2].name}`,
+      data: curva2,
+      type: 'line',
+      borderColor: modelos[currentModeloFase2].color,
+      borderWidth: 3,
+      fill: false,
+      pointRadius: 0,
+      tension: 0.2
     });
   }
   
@@ -309,6 +415,8 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
             text: 'Tiempo (Horas)',
             font: { size: 14, weight: 'bold' }
           },
+          min: 0,
+          max: xMax,
           grid: { color: 'rgba(0,0,0,0.1)' }
         },
         y: { 
@@ -318,8 +426,8 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
             text: 'Crecimiento Bacteriano (Normalizado)',
             font: { size: 14, weight: 'bold' }
           },
-          min: 0,     // mínimo del eje Y
-          max: 1.1,  // Ajuste a un máximo razonable para datos normalizados
+          min: 0,
+          max: 1.5,
           grid: { color: 'rgba(0,0,0,0.1)' }
         }
       },
@@ -348,6 +456,63 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
 
 // Inicializar la aplicación
 document.addEventListener('DOMContentLoaded', function() {
+  // Configurar slider y su visualización
+  const slider = document.getElementById('tiempo');
+  const sliderValor = document.getElementById('tiempoValor');
+  if (slider && sliderValor) {
+    sliderValor.textContent = slider.value;
+    slider.addEventListener('input', function() {
+      sliderValor.textContent = this.value;
+      // Re-renderizar cuando cambia la hora máxima
+      renderCluster(currentTemperatura, currentMedio);
+    });
+  }
+
+  // Mostrar estado inicial
+  const estado = document.getElementById('estado');
+  if (estado) {
+    estado.hidden = false;
+    estado.textContent = 'Cargando datos…';
+  }
+
+  // Cargar datos desde datos.json (permitiendo comentarios)
+  fetch('datos.json')
+    .then(r => r.text())
+    .then(texto => {
+      // Eliminar comentarios tipo /* ... */ y // ...
+      const sinBloques = texto.replace(/\/\*[\s\S]*?\*\//g, '');
+      const sinLineas = sinBloques.replace(/(^|\n)\s*\/\/.*(?=\n|$)/g, '$1');
+      let json;
+      try {
+        json = JSON.parse(sinLineas);
+      } catch (e) {
+        console.error('Error parseando datos.json', e);
+        if (estado) {
+          estado.hidden = false;
+          estado.textContent = 'Error al leer datos.json';
+        }
+        return;
+      }
+      datos = Array.isArray(json) ? json : [];
+      if (estado) {
+        if (!datos.length) {
+          estado.hidden = false;
+          estado.textContent = 'No hay datos para mostrar.';
+        } else {
+          estado.hidden = true;
+          estado.textContent = '';
+        }
+      }
+      // Renderizar inicialmente una vez que los datos están cargados
+      renderCluster(currentTemperatura, currentMedio);
+    })
+    .catch(err => {
+      console.error('Error cargando datos.json', err);
+      if (estado) {
+        estado.hidden = false;
+        estado.textContent = 'Error cargando datos.json';
+      }
+    });
   // Configurar selector de barrio
   const temperaturaSelect = document.getElementById('temperaturaSelect');
   const medioSelect = document.getElementById('medioSelect');
@@ -386,12 +551,24 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Re-renderizar gráfico
       const resultados = renderCluster(currentTemperatura, currentMedio);
-      showCurrentModel(resultados[currentModelo]);  
     });
   });
+
+  // Selects de modelos por fase
+  const selF1 = document.getElementById('modeloFase1');
+  const selF2 = document.getElementById('modeloFase2');
+  if (selF1) selF1.value = currentModeloFase1;
+  if (selF2) selF2.value = currentModeloFase2;
+  if (selF1) selF1.addEventListener('change', function() {
+    currentModeloFase1 = this.value;
+    renderCluster(currentTemperatura, currentMedio);
+  });
+  if (selF2) selF2.addEventListener('change', function() {
+    currentModeloFase2 = this.value;
+    renderCluster(currentTemperatura, currentMedio);
+  });
   
-  // Renderizar inicialmente
-  renderCluster(currentTemperatura, currentMedio);
+  // La renderización inicial ahora ocurre después de cargar los datos
   
   
 });

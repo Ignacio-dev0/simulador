@@ -71,6 +71,29 @@
             <button class="model-btn" data-modelo="exponencial">Exponencial</button>
             <button class="model-btn" data-modelo="potencial">Potencial</button>
           </div>
+					<hr style="margin:16px 0;border:none;border-top:1px solid #e0e0e0;" />
+					<h3>Modelado por Tramos</h3>
+					<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+						<div>
+							<label for="modeloFase1">Fase 1 (0 → t_corte)</label>
+							<select id="modeloFase1">
+								<option value="exponencial">Exponencial</option>
+								<option value="lineal">Lineal</option>
+								<option value="cuadratico">Polinomica de 2° orden</option>
+								<option value="potencial">Potencial</option>
+							</select>
+						</div>
+						<div>
+							<label for="modeloFase2">Fase 2 (t_corte → Hora)</label>
+							<select id="modeloFase2">
+								<option value="lineal">Lineal</option>
+								<option value="cuadratico">Polinomica de 2° orden</option>
+								<option value="exponencial">Exponencial</option>
+								<option value="potencial">Potencial</option>
+							</select>
+						</div>
+					</div>
+					<div class="status" id="tcorte-info" hidden></div>
         </div>
 
         <div class="model-info">
