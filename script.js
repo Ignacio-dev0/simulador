@@ -145,14 +145,21 @@ function potFit(xs, ys) {
 function computeTcorte(xs, ys) {
   const n = xs.length;
   if (n < 3) return xs[n - 1];
-  let tCorte = xs[1];
-  for (let k = 2; k <= n; k++) {
+  // Requiere un mínimo de puntos para estabilidad
+  const minK = Math.max(5, Math.floor(n * 0.15));
+  let tCorte = xs[minK - 1];
+  for (let k = minK; k <= n; k++) {
     const subXs = xs.slice(0, k);
     const subYs = ys.slice(0, k);
     const exp = expFit(subXs, subYs);
-    if (exp && exp.R2 >= 0.95) {
+    // Umbral más estricto y pendiente positiva (crecimiento)
+    if (exp && exp.R2 >= 0.95 && exp.b > 0) {
       tCorte = subXs[k - 1];
     }
+  }
+  // Si nunca se cumple el criterio, usar un corte intermedio para evitar que quede demasiado temprano
+  if (!isFinite(tCorte)) {
+    tCorte = xs[Math.floor(n / 2)];
   }
   return tCorte;
 }
@@ -268,6 +275,34 @@ function getCondicionColor(temperatura, medio) {
   return mapa[key] || '#333333';
 }
 
+// Actualiza métricas de Fase 1 y Fase 2 en UI
+function updatePhaseMetrics(fase1, fase2, tCorte) {
+  const eqF1 = document.getElementById('ecuacion-fase1');
+  const r2F1 = document.getElementById('r2-fase1');
+  const r2adjF1 = document.getElementById('r2adj-fase1');
+  const errF1 = document.getElementById('error-fase1');
+  const eqF2 = document.getElementById('ecuacion-fase2');
+  const r2F2 = document.getElementById('r2-fase2');
+  const r2adjF2 = document.getElementById('r2adj-fase2');
+  const errF2 = document.getElementById('error-fase2');
+  const tcInfo = document.getElementById('tcorte-info');
+
+  if (tcInfo) {
+    tcInfo.hidden = false;
+    tcInfo.textContent = `t_corte = ${tCorte.toFixed(2)} h (R² exp ≥ 0.95)`;
+  }
+
+  if (eqF1) eqF1.textContent = fase1?.ecuacion ?? '—';
+  if (r2F1) r2F1.textContent = fase1?.R2?.toFixed?.(4) ?? '—';
+  if (r2adjF1) r2adjF1.textContent = fase1?.R2adj?.toFixed?.(4) ?? '—';
+  if (errF1) errF1.textContent = fase1?.error?.toFixed?.(4) ?? '—';
+
+  if (eqF2) eqF2.textContent = fase2?.ecuacion ?? '—';
+  if (r2F2) r2F2.textContent = fase2?.R2?.toFixed?.(4) ?? '—';
+  if (r2adjF2) r2adjF2.textContent = fase2?.R2adj?.toFixed?.(4) ?? '—';
+  if (errF2) errF2.textContent = fase2?.error?.toFixed?.(4) ?? '—';
+}
+
 
 // Función modificada para renderizar el gráfico de crecimiento bacteriano con animaciones
 function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
@@ -341,6 +376,9 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
 
   const fit1 = mapModelo[currentModeloFase1](xs1, ys1);
   const fit2 = mapModelo[currentModeloFase2](xs2, ys2);
+
+  // Mostrar métricas por fase
+  updatePhaseMetrics(fit1, fit2, tCorte);
 
   // Curva suavizada combinando ambos modelos para evitar salto
   if (fit1 && fit2) {
