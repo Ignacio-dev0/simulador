@@ -275,6 +275,25 @@ function getCondicionColor(temperatura, medio) {
   return mapa[key] || '#333333';
 }
 
+// Convierte un color hex a rgba con alpha
+function withAlpha(hex, alpha) {
+  if (!hex) return `rgba(0,0,0,${alpha ?? 1})`;
+  if (hex.startsWith('rgb')) {
+    // si ya es rgb/rgba, intenta reemplazar alpha
+    const m = hex.match(/rgba?\((\d+),(\d+),(\d+)(?:,(\d+(?:\.\d+)?))?\)/);
+    if (m) {
+      const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+      return `rgba(${r},${g},${b},${alpha ?? (m[4] ? Number(m[4]) : 1)})`;
+    }
+  }
+  // hex #rrggbb
+  const clean = hex.replace('#','');
+  const r = parseInt(clean.substring(0,2), 16);
+  const g = parseInt(clean.substring(2,4), 16);
+  const b = parseInt(clean.substring(4,6), 16);
+  return `rgba(${r},${g},${b},${alpha ?? 1})`;
+}
+
 // Actualiza métricas de Fase 1 y Fase 2 en UI
 function updatePhaseMetrics(fase1, fase2, tCorte) {
   const eqF1 = document.getElementById('ecuacion-fase1');
@@ -325,9 +344,12 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
     // La etiqueta ahora usa la nueva condición
     label: `Datos de ${condicionId}`,
     data: puntos,
-    backgroundColor: getCondicionColor(temperatura, medio),
+    backgroundColor: withAlpha(getCondicionColor(temperatura, medio), 0.35),
+    borderColor: withAlpha(getCondicionColor(temperatura, medio), 0.6),
+    borderWidth: 0,
     pointRadius: 6,
     pointHoverRadius: 10,
+    order: -999,
     animation: {
       duration: 50,
       easing: 'easeOutQuart',
@@ -400,11 +422,12 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
       label: `Curva suavizada (t_corte)`,
       data: curvaSuave,
       type: 'line',
-      borderColor: '#1d4ed8',
-      borderWidth: 3,
+      borderColor: '#000000',
+      borderWidth: 4,
       fill: false,
       pointRadius: 0,
-      tension: 0.2
+      tension: 0.2,
+      order: 999
     });
   } else if (fit1) {
     const curva1 = rango.map(x => ({ x, y: fit1.predict(x) }));
@@ -412,11 +435,12 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
       label: `Fase 1 - ${modelos[currentModeloFase1].name}`,
       data: curva1,
       type: 'line',
-      borderColor: modelos[currentModeloFase1].color,
-      borderWidth: 3,
+      borderColor: '#000000',
+      borderWidth: 4,
       fill: false,
       pointRadius: 0,
-      tension: 0.2
+      tension: 0.2,
+      order: 999
     });
   } else if (fit2) {
     const curva2 = rango.map(x => ({ x, y: fit2.predict(x) }));
@@ -424,11 +448,12 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
       label: `Fase 2 - ${modelos[currentModeloFase2].name}`,
       data: curva2,
       type: 'line',
-      borderColor: modelos[currentModeloFase2].color,
-      borderWidth: 3,
+      borderColor: '#000000',
+      borderWidth: 4,
       fill: false,
       pointRadius: 0,
-      tension: 0.2
+      tension: 0.2,
+      order: 999
     });
   }
   
@@ -455,7 +480,8 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
           },
           min: 0,
           max: xMax,
-          grid: { color: 'rgba(0,0,0,0.1)' }
+          grid: { color: 'rgba(0,0,0,0.1)' },
+          ticks: { padding: 8 }
         },
         y: { 
           title: { 
@@ -466,7 +492,9 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
           },
           min: 0,
           max: 1.5,
-          grid: { color: 'rgba(0,0,0,0.1)' }
+          grid: { color: 'rgba(0,0,0,0.1)' },
+          ticks: { padding: 8 },
+          grace: '5%'
         }
       },
       plugins: {
