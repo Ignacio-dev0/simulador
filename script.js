@@ -148,14 +148,20 @@ function potFit(xs, ys) {
 
 // Función para renderizar el gráfico con animaciones 
 function renderCluster(temperatura, medio) {
-  const puntos = datos.filter(d => d.temperatura === temperatura && d.medio === medio);
-  const xs = puntos.map(p => p.tiempo_h);
-  const ys = puntos.map(p => p['Crecimiento normalizado']);
+  const rawPuntos = datos.filter(d => d.temperaturaC === temperatura && d.medio === medio);
   
   if (xs.length < 2) {
     return null;
   }
   
+  const puntos = rawPuntos.map(p => ({ 
+    x: p.tiempo_h, 
+    y: p['Crecimiento normalizado'] 
+  }));
+
+  const xs = puntos.map(p => p.x); 
+  const ys = puntos.map(p => p.y);
+
   // Identificador de la condición para la UI (simula el antiguo 'barrio')
   const condicionId = `${temperatura}°C en ${medio}`;
 
@@ -166,8 +172,8 @@ function renderCluster(temperatura, medio) {
   resultados.exponencial = expFit(xs, ys);
   resultados.potencial = potFit(xs, ys);
   
-  updateUI(condicionId, resultados);
-  createAnimatedChart(condicionId, puntos, resultados);
+  updateUI(resultados);
+  createAnimatedGrowthChart(temperatura,medio, puntos, resultados);
   
   return resultados;
 }
@@ -259,8 +265,8 @@ function createAnimatedGrowthChart(temperatura, medio, puntos, resultados) {
   
   // Dataset para la curva del modelo actual
   // Asumimos que los 'puntos' ya contienen los datos mapeados (tiempo_h en .x y Crecimiento en .y)
-  const minX = Math.min(...puntos.map(p => p.horas_t));
-  const maxX = Math.max(...puntos.map(p => p['Crecimiento normalizado']));
+  const minX = Math.min(...puntos.map(p => p.x));
+  const maxX = Math.max(...puntos.map(p => p.x));
   const rango = Array.from({length: 100}, (_, i) => minX + i * (maxX - minX) / 99);
   
   const modeloData = resultados[currentModelo];
@@ -379,14 +385,13 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       // Re-renderizar gráfico
-      const puntos = datos.filter(d => d.temperatura === temperatura && d.medio === medio);
       const resultados = renderCluster(currentTemperatura, currentMedio);
-      showCurrentModel(resultados[currentModelo]);
+      showCurrentModel(resultados[currentModelo]);  
     });
   });
   
   // Renderizar inicialmente
-  renderBarrio(currentTemperatura, currentMedio);
+  renderCluster(currentTemperatura, currentMedio);
   
   
 });
